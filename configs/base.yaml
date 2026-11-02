@@ -1,0 +1,39 @@
+# every experiment config inherits this and overrides what it changes
+
+name: base
+seed: 0
+
+student: Qwen/Qwen3-0.6B-Base
+teacher: Qwen/Qwen3-4B
+
+data:
+  train: gsm8k
+  eval: [gsm8k, svamp]
+  n_train: null       # null = all of it, set for the data-efficiency runs
+  max_len: 512
+
+train:
+  epochs: 1
+  lr: 1.0e-5
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  micro_batch: 4
+  grad_accum: 8
+  optimizer: adamw8bit
+  fp16: true          # t4 has no bf16
+  grad_ckpt: true
+
+loss:
+  kind: ce            # ce | fkl | rkl | jsd
+  temperature: 1.0
+  ce_weight: 0.1      # only used by the kd losses
+  top_k: 32
+
+eval:
+  n_shot: 4           # base models only, finetuned students go zero-shot
+  max_new_tokens: 512
+  temperature: 0.0
+
+wandb:
+  project: distill-lab
