@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from distill_lab.train.losses import IGNORE, ce_loss, fkl_loss, jsd_loss, rkl_loss, shift
+from distill_lab.train.losses import IGNORE, TopK, ce_loss, fkl_loss, jsd_loss, rkl_loss, shift
 
 
 def test_shift_lines_up_prediction_with_next_token():
@@ -196,3 +196,66 @@ def test_jsd_survives_zero_probability_teacher_tokens():
     loss = jsd_loss(student, teacher, ONE)
     loss.backward()
     assert torch.isfinite(loss) and torch.isfinite(student.grad).all()
+
+
+def _topk_of(teacher_logits, k):
+    logprobs, ids = F.log_softmax(teacher_logits, -1).topk(k, dim=-1)
+    return TopK(ids=ids, logprobs=logprobs)
+
+
+def test_topk_hand_computed_tail_bucket():
+    # chapter 4: teacher top-2 = [0.60, 0.25], tail 0.15. student gives those ids
+    # [0.40, 0.30] and spreads its 0.30 tail over the rest -> 0.0937
+    teacher = TopK(ids=torch.tensor([[[0, 1]]]), logprobs=torch.tensor([[[0.60, 0.25]]]).log())
+    student = _probs_as_logits([0.40, 0.30, 0.10, 0.10, 0.10])
+    assert fkl_loss(student, teacher, ONE).item() == pytest.approx(0.09373, abs=1e-5)
+
+
+def test_topk_tail_shape_is_invisible():
+    # only the tail's total counts, not how the student spreads it
+    teacher = TopK(ids=torch.tensor([[[0, 1]]]), logprobs=torch.tensor([[[0.60, 0.25]]]).log())
+    a = _probs_as_logits([0.40, 0.30, 0.10, 0.10, 0.10])
+    b = _probs_as_logits([0.40, 0.30, 0.28, 0.01, 0.01])
+    assert fkl_loss(a, teacher, ONE).item() == pytest.approx(fkl_loss(b, teacher, ONE).item(), abs=1e-6)
+
+
+@pytest.mark.parametrize("loss_fn", [fkl_loss, rkl_loss, jsd_loss])
+def test_topk_over_whole_vocab_matches_dense(loss_fn):
+    torch.manual_seed(0)
+    s, t = torch.randn(2, 4, 12), torch.randn(2, 4, 12)
+    labels = torch.zeros(2, 4, dtype=torch.long)
+    dense = loss_fn(s, t, labels).item()
+    # k = V leaves an empty tail, which only the floor fills
+    assert loss_fn(s, _topk_of(t, 12), labels).item() == pytest.approx(dense, abs=1e-4)
+
+
+@pytest.mark.parametrize("loss_fn", [fkl_loss, rkl_loss, jsd_loss])
+def test_topk_32_is_close_to_dense_on_a_peaked_teacher(loss_fn):
+    # lm distributions are peaked, so 32 of 1000 ids hold nearly all the mass
+    torch.manual_seed(0)
+    t = torch.randn(4, 16, 1000) * 4
+    s = t + torch.randn_like(t)
+    labels = torch.zeros(4, 16, dtype=torch.long)
+    dense = loss_fn(s, t, labels).item()
+    approx = loss_fn(s, _topk_of(t, 32), labels).item()
+    assert abs(approx - dense) / dense < 0.1
+
+
+@pytest.mark.parametrize("loss_fn", [fkl_loss, rkl_loss, jsd_loss])
+def test_topk_gradients_are_finite_and_skip_the_teacher(loss_fn):
+    torch.manual_seed(0)
+    s = torch.randn(2, 3, 50, requires_grad=True)
+    teacher = _topk_of(torch.randn(2, 3, 50) * 5, 8)
+    teacher.logprobs.requires_grad_()
+    loss = loss_fn(s, teacher, torch.zeros(2, 3, dtype=torch.long), temperature=2.0)
+    loss.backward()
+    assert torch.isfinite(loss) and torch.isfinite(s.grad).all()
+    assert teacher.logprobs.grad is None
+
+
+def test_topk_handles_fp16_cache_summing_past_one():
+    # rounding in the cache can make the top-k mass exceed 1, tail would go negative
+    logprobs = torch.tensor([[[0.7, 0.31]]]).log().half()
+    teacher = TopK(ids=torch.tensor([[[0, 1]]]), logprobs=logprobs)
+    loss = rkl_loss(torch.randn(1, 1, 6), teacher, ONE)
+    assert torch.isfinite(loss) and loss.item() >= 0
