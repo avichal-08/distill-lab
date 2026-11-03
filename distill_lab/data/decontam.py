@@ -58,6 +58,14 @@ def too_short(recs: list[dict], fields: tuple[str, ...], n: int = N) -> list[str
     return [r["id"] for r in recs if len(words(_texts(r, fields))) < n]
 
 
+def drop_contaminated(train: list[dict], tests: list[list[dict]], n: int = N) -> tuple[list[dict], list[str]]:
+    flagged: set[str] = set()
+    for test_recs in tests:
+        index = build_index(test_recs, ("question",), n)
+        flagged |= {h["id"] for h in find_overlaps(train, ("question", "solution"), index, n)}
+    return [r for r in train if r["id"] not in flagged], sorted(flagged)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="cache/data")
@@ -84,11 +92,9 @@ def main() -> None:
         print(f"{k}: {len(ids)} questions shorter than {args.n} words, unchecked")
 
     if args.drop:
-        flagged = {h["id"] for k, hits in report["hits"].items() if k.startswith("gsm8k_train ") for h in hits}
-        kept = [r for r in train["gsm8k_train"] if r["id"] not in flagged]
+        kept, report["dropped"] = drop_contaminated(train["gsm8k_train"], list(tests.values()), args.n)
         save({"gsm8k_train": kept}, Path(args.data))
-        report["dropped"] = sorted(flagged)
-        print(f"dropped {len(flagged)}, gsm8k_train now has {len(kept)} records")
+        print(f"dropped {len(report['dropped'])}, gsm8k_train now has {len(kept)} records")
 
     out = Path(args.data) / "decontam_report.json"
     out.write_text(json.dumps(report, indent=1))

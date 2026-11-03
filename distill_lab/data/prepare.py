@@ -119,7 +119,11 @@ def main() -> None:
     ap.add_argument("--push", default=None, help="hf dataset repo, e.g. you/distill-lab-data")
     args = ap.parse_args()
 
+    from distill_lab.data.decontam import drop_contaminated
+
     splits = load_all()
+    splits["gsm8k_train"], dropped = drop_contaminated(splits["gsm8k_train"], [splits["gsm8k_test"], splits["svamp_test"]])
+    print(f"dropped {len(dropped)} training records that overlap a test question: {', '.join(dropped)}")
     save(splits, Path(args.out))
     for name, recs in splits.items():
         print(f"{name:12s} {len(recs):5d} records")
