@@ -13,6 +13,19 @@ Every model gets the same evals. That covers accuracy on GSM8K and SVAMP, but al
 
 The losses and the training loop are written by hand in PyTorch. Everything runs on free Kaggle GPUs.
 
+## baselines
+
+before any training. 4-shot prompt, greedy decoding, up to 512 new tokens, one T4 on Kaggle.
+
+| model | GSM8K (1,319) | SVAMP (1,000) |
+|---|---|---|
+| Qwen3-0.6B-Base, the student | 49.4% ± 2.7 | 63.0% ± 3.0 |
+| Qwen3-4B, the teacher | 85.1% ± 1.9 | 84.0% ± 2.3 |
+
+± is a 95% binomial interval. The gap on GSM8K is 36 points, which is the room distillation has to work with.
+
+Every one of the 4,638 outputs had a number the extractor could read. 98% ended with the `#### answer` line from the prompt, the rest fell back to looking for "the answer is" or the last number. I read through the fallback cases by hand: almost all are answers that ran out of tokens mid-reasoning (the teacher likes to second-guess itself with "wait, ..."), which correctly count as wrong. I found one real misread, where the student wrote "deliver 160 red roses by 5 pm" and the extractor took the 5.
+
 ## status
 
-just getting started. results will land here as runs finish.
+baselines done. next: generating the teacher's solutions and caching its probabilities.
