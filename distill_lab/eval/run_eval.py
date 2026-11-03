@@ -53,11 +53,12 @@ def score(records: list[dict], outputs: list[str]) -> tuple[list[dict], dict]:
     return rows, summary
 
 
-def vllm_generator(model: str, max_new_tokens: int, temperature: float, seed: int) -> Generate:
+def vllm_generator(model: str, max_new_tokens: int, temperature: float, seed: int, eager: bool = False) -> Generate:
     from vllm import LLM, SamplingParams
 
     # t4 has no bf16, so half
-    llm = LLM(model=model, dtype="half", seed=seed, max_model_len=4096, gpu_memory_utilization=0.9)
+    # eager skips cuda graphs: slower, but the usual fix when vllm crashes on a t4
+    llm = LLM(model=model, dtype="half", seed=seed, max_model_len=4096, gpu_memory_utilization=0.9, enforce_eager=eager)
     params = SamplingParams(temperature=temperature, max_tokens=max_new_tokens, stop=STOP, seed=seed)
 
     def generate(prompts: list[str]) -> list[str]:
@@ -66,7 +67,7 @@ def vllm_generator(model: str, max_new_tokens: int, temperature: float, seed: in
     return generate
 
 
-def hf_generator(model: str, max_new_tokens: int, temperature: float, seed: int) -> Generate:
+def hf_generator(model: str, max_new_tokens: int, temperature: float, seed: int, eager: bool = False) -> Generate:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -113,6 +114,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="only the first n questions of each set")
     ap.add_argument("--backend", choices=["vllm", "hf"], default="vllm")
     ap.add_argument("--wandb", action="store_true")
+    ap.add_argument("--eager", action="store_true", help="vllm without cuda graphs, if it crashes")
     ap.add_argument("overrides", nargs="*")
     args = ap.parse_args()
 
@@ -124,7 +126,7 @@ def main() -> None:
     datasets = {f"{d}_test": load_split(args.data, f"{d}_test")[: args.limit] for d in cfg["data"]["eval"]}
     examples = shots(load_split(args.data, "gsm8k_train"))[:n_shot]
     make = vllm_generator if args.backend == "vllm" else hf_generator
-    generate = make(model, ev["max_new_tokens"], ev["temperature"], cfg["seed"])
+    generate = make(model, ev["max_new_tokens"], ev["temperature"], cfg["seed"], args.eager)
 
     summaries = evaluate(datasets, examples, generate, Path(args.out) / args.name)
     for name, s in summaries.items():
