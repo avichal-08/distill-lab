@@ -30,6 +30,13 @@ loss:
   ce_weight: 0.1      # only used by the kd losses
   top_k: 32
 
+teacher_gen:
+  n_samples: 2        # solutions per training question, wrong ones get dropped
+  temperature: 0.7    # > 0 so the two samples can differ
+  top_p: 0.95
+  max_new_tokens: 512
+  n_shot: 4
+
 eval:
   n_shot: 4           # base models only, finetuned students go zero-shot
   max_new_tokens: 512
