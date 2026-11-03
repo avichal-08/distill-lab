@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
-from distill_lab.train.losses import IGNORE, ce_loss, fkl_loss, shift
+from distill_lab.train.losses import IGNORE, ce_loss, fkl_loss, jsd_loss, rkl_loss, shift
 
 
 def test_shift_lines_up_prediction_with_next_token():
@@ -125,3 +125,74 @@ def test_fkl_survives_zero_probability_teacher_tokens():
     loss.backward()
     assert torch.isfinite(loss)
     assert torch.isfinite(student.grad).all()
+
+
+ONE = torch.tensor([[0]])
+
+
+def test_rkl_hand_computed_value():
+    # chapter 3: KL(q || p) with the same p, q -> 0.0920
+    loss = rkl_loss(_probs_as_logits([0.5, 0.3, 0.2]), _probs_as_logits([0.7, 0.2, 0.1]), ONE)
+    assert loss.item() == pytest.approx(0.09203, abs=1e-5)
+
+
+def test_rkl_matches_torch_kl_div_with_args_swapped():
+    torch.manual_seed(0)
+    s, t = torch.randn(2, 5, 9), torch.randn(2, 5, 9)
+    labels = torch.randint(0, 9, (2, 5))
+    labels[1, 2:] = IGNORE
+    per_token = F.kl_div(F.log_softmax(t, -1), F.log_softmax(s, -1), log_target=True, reduction="none").sum(-1)
+    ref = per_token[labels != IGNORE].mean()
+    assert rkl_loss(s, t, labels).item() == pytest.approx(ref.item(), abs=1e-5)
+
+
+def test_forward_covers_modes_reverse_picks_one():
+    # chapter 3's bimodal teacher: forward kl prefers the spread student, reverse kl the one-mode student
+    teacher = _probs_as_logits([0.49, 0.02, 0.49])
+    spread = _probs_as_logits([0.25, 0.50, 0.25])
+    one_mode = _probs_as_logits([0.96, 0.02, 0.02])
+    f_spread, f_mode = fkl_loss(spread, teacher, ONE).item(), fkl_loss(one_mode, teacher, ONE).item()
+    r_spread, r_mode = rkl_loss(spread, teacher, ONE).item(), rkl_loss(one_mode, teacher, ONE).item()
+    assert (f_spread, f_mode) == pytest.approx((0.595, 1.238), abs=1e-3)
+    assert (r_spread, r_mode) == pytest.approx((1.273, 0.581), abs=1e-3)
+    assert f_spread < f_mode and r_mode < r_spread
+
+
+def test_jsd_hand_computed_value():
+    # chapter 3: 0.0219
+    loss = jsd_loss(_probs_as_logits([0.5, 0.3, 0.2]), _probs_as_logits([0.7, 0.2, 0.1]), ONE)
+    assert loss.item() == pytest.approx(0.02190, abs=1e-5)
+
+
+def test_jsd_is_symmetric_at_half():
+    torch.manual_seed(0)
+    a, b = torch.randn(1, 4, 6), torch.randn(1, 4, 6)
+    labels = torch.zeros(1, 4, dtype=torch.long)
+    assert jsd_loss(a, b, labels).item() == pytest.approx(jsd_loss(b, a, labels).item(), abs=1e-6)
+
+
+def test_jsd_is_bounded_by_ln2():
+    # no overlap at all is the worst case
+    teacher = torch.tensor([[[30.0, -30.0]]])
+    student = torch.tensor([[[-30.0, 30.0]]])
+    assert jsd_loss(student, teacher, ONE).item() == pytest.approx(math.log(2), abs=1e-4)
+
+
+@pytest.mark.parametrize("loss_fn", [rkl_loss, jsd_loss])
+def test_identical_is_zero_and_teacher_gets_no_gradient(loss_fn):
+    torch.manual_seed(0)
+    s = torch.randn(2, 3, 7, requires_grad=True)
+    t = s.detach().clone().requires_grad_()
+    labels = torch.zeros(2, 3, dtype=torch.long)
+    loss = loss_fn(s, t, labels)
+    loss.backward()
+    assert loss.item() == pytest.approx(0.0, abs=1e-6)
+    assert t.grad is None
+
+
+def test_jsd_survives_zero_probability_teacher_tokens():
+    teacher = torch.tensor([[[2.0, 1.0, float("-inf")]]])
+    student = torch.randn(1, 1, 3, requires_grad=True)
+    loss = jsd_loss(student, teacher, ONE)
+    loss.backward()
+    assert torch.isfinite(loss) and torch.isfinite(student.grad).all()
