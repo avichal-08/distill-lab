@@ -9,10 +9,14 @@ trailing key=value args override the config.
 import argparse
 import json
 import math
+import os
 import random
 import time
 from pathlib import Path
 from typing import Callable
+
+# batch widths vary a lot, without this the l1 oom had 3.2 gb reserved but unusable
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch
 

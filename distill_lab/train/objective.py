@@ -18,7 +18,13 @@ def objective(
     ce:        plain next-token cross-entropy on the labels
     fkl/rkl/jsd: (1 - w) * kd + w * ce, with w = loss.ce_weight.
     teacher is (B, T-1, K), already lined up with the shifted labels."""
+    # (B, T, ...) in, flat (N, ...) over graded tokens from here on
     lg, lb = shift(logits, labels)
+    # keep graded positions only. prompt and padding rows would each cost a full-vocab fp32 softmax
+    graded = lb != IGNORE
+    lg, lb = lg[graded], lb[graded]
+    if teacher is not None:
+        teacher = TopK(ids=teacher.ids[graded], logprobs=teacher.logprobs[graded])
     if loss_cfg["kind"] == "ce":
         ce = ce_loss(lg, lb, reduction="sum")
         return ce, {"ce": ce.item()}
