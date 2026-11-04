@@ -69,6 +69,30 @@ training on the teacher's solutions is a different story: +14 points on GSM8K. i
 
 R1 trained for 398 steps in 27 minutes on one T4. training ce went from 0.30 to about 0.22, already low from the start because the teacher's text is predictable.
 
+## logit distillation
+
+same 12,724 teacher solutions as R1, same steps and lr. the difference is the target: instead of only the next token of the teacher's text, the student matches the teacher's top-32 distribution at every position. loss is 0.9 × KL + 0.1 × CE on the text.
+
+| model | loss | GSM8K | SVAMP |
+|---|---|---|---|
+| R1 | CE on teacher text | 63.5% ± 2.6 | 62.6% ± 3.0 |
+| L1 | forward KL | 64.7% ± 2.6 | 68.0% ± 2.9 |
+| L2 | reverse KL | 64.7% ± 2.6 | 70.3% ± 2.8 |
+
+on GSM8K the three are the same within noise. the teacher's text already carries most of what helps there.
+
+SVAMP is where they split. R1 didn't move from the base model (63.0%), L1 gained 5 points and L2 gained 7. the L2 vs R1 gap is well outside both intervals. same questions, same solutions, so the only extra thing L1 and L2 got is the teacher's probabilities over the other tokens it was considering. that seems to be what carries over to a different kind of problem.
+
+I expected reverse KL to do worse, since it's mode-seeking and my cache under-counts it by about 6%. it came out slightly ahead, though the L1 vs L2 gap (2.3 points) is inside the noise.
+
+the first L1 run ran out of memory on the T4. every loss was doing a full 152k-vocab fp32 softmax at every padded position, three times per batch. only computing it on the ~82 graded tokens per example fixed it, and L1 now trains in about the same time as R1.
+
+| | L1 | L2 |
+|---|---|---|
+| kd loss, first → last 10 steps | 0.36 → 0.11 | 0.72 → 0.18 |
+| ce on the text at the end | 0.32 | 0.40 |
+| training time on one T4 | 29 min | 29 min |
+
 ## status
 
-baselines, teacher data, S1 and R1 done. next: logit distillation (L1, L2).
+baselines, teacher data, S1, R1, L1 and L2 done. next: the same runs on 1k and 3k questions, to see how each method scales with data.
