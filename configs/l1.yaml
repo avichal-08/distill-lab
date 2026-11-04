@@ -1,0 +1,7 @@
+# logit distillation, forward kl against the cached top-32 teacher distribution
+base: base.yaml
+name: l1
+data:
+  source: teacher
+loss:
+  kind: fkl

@@ -1,0 +1,7 @@
+# control: plain sft on the human-written gsm8k solutions, no teacher at all
+base: base.yaml
+name: s1
+data:
+  source: human
+loss:
+  kind: ce

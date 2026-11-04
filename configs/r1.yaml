@@ -1,0 +1,7 @@
+# response distillation: sft on the teacher's own correct solutions
+base: base.yaml
+name: r1
+data:
+  source: teacher
+loss:
+  kind: ce

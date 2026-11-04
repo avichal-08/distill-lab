@@ -1,0 +1,7 @@
+# logit distillation, reverse kl. same data and teacher as l1, only the direction flips
+base: base.yaml
+name: l2
+data:
+  source: teacher
+loss:
+  kind: rkl
