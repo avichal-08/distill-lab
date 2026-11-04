@@ -9,7 +9,10 @@ teacher: Qwen/Qwen3-4B
 data:
   train: gsm8k
   eval: [gsm8k, svamp]
-  n_train: null       # null = all of it, set for the data-efficiency runs
+  source: human       # human = gsm8k solutions, teacher = the kept teacher solutions
+  teacher_repo: avichal-08/distill-lab-teacher
+  logits_repo: avichal-08/distill-lab-logits
+  n_questions: null   # null = all of them, set for the data-efficiency runs
   max_len: 512
 
 train:
@@ -23,6 +26,7 @@ train:
   optimizer: adamw8bit
   fp16: true          # t4 has no bf16
   grad_ckpt: true
+  log_every: 10       # optimizer steps
 
 loss:
   kind: ce            # ce | fkl | rkl | jsd

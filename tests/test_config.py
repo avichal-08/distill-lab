@@ -23,7 +23,7 @@ def test_child_inherits_and_overrides(tmp_path):
 
 
 def test_cli_overrides_are_typed():
-    cfg = load_config(BASE, ["train.lr=2e-5", "data.n_train=1000", "train.fp16=false"])
+    cfg = load_config(BASE, ["train.lr=2e-5", "data.n_questions=1000", "train.fp16=false"])
     assert cfg["train"]["lr"] == 2e-5
-    assert cfg["data"]["n_train"] == 1000
+    assert cfg["data"]["n_questions"] == 1000
     assert cfg["train"]["fp16"] is False
