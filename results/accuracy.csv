@@ -1,0 +1,8 @@
+run,label,prompt,gsm8k,gsm8k_ci,svamp,svamp_ci
+b0,base student,4-shot,49.4,2.7,63.0,3.0
+s1,S1 human solutions,0-shot,52.2,2.7,57.3,3.1
+s1-4shot,S1 human solutions,4-shot,48.3,2.7,63.2,3.0
+r1,R1 teacher text,0-shot,63.5,2.6,62.6,3.0
+l1,L1 forward KL,0-shot,64.7,2.6,68.0,2.9
+l2,L2 reverse KL,0-shot,64.7,2.6,70.3,2.8
+b1,teacher (4B),4-shot,85.1,1.9,84.0,2.3
