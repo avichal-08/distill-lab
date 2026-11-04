@@ -13,6 +13,18 @@ Every model gets the same evals. That covers accuracy on GSM8K and SVAMP, but al
 
 The losses and the training loop are written by hand in PyTorch. Everything runs on free Kaggle GPUs.
 
+![accuracy of every model on GSM8K and SVAMP](results/accuracy.png)
+
+what I found:
+
+- training on human-written solutions did nothing. the student was already as good as those solutions could make it.
+- training on the teacher's solutions gave +14 to 15 points on GSM8K. all three teacher-based methods land at 64-65% there.
+- they only differ on SVAMP, the problems written in a different style. copying the teacher's text gave no gain (63%). matching the teacher's token probabilities gave 68% (forward KL) and 70% (reverse KL).
+
+so the extra thing logit distillation passes on, the teacher's view of the other tokens it could have written, is what carries over to unfamiliar problems. on the familiar ones the text alone was enough.
+
+the numbers are in [results/accuracy.csv](results/accuracy.csv), the chart comes from `python -m distill_lab.analysis.plots`.
+
 ## baselines
 
 before any training. 4-shot prompt, greedy decoding, up to 512 new tokens, one T4 on Kaggle.
@@ -93,6 +105,13 @@ the first L1 run ran out of memory on the T4. every loss was doing a full 152k-v
 | ce on the text at the end | 0.32 | 0.40 |
 | training time on one T4 | 29 min | 29 min |
 
-## status
+## what I didn't get to
 
-baselines, teacher data, S1, R1, L1 and L2 done. next: the same runs on 1k and 3k questions, to see how each method scales with data.
+I stopped here. things I'd try next, in order:
+
+- calibration: soft targets usually make a model's confidence more honest. if L1/L2 are better calibrated than R1, that would back up the SVAMP result from a second angle.
+- the same runs on 1k and 3k questions, to see whether logit KD needs less data.
+- more than one seed. every result here is a single run, so the 2-point L1 vs L2 gap means nothing yet.
+- on-policy distillation, where the student writes its own solutions and the teacher grades every token.
+
+the trained students are on Hugging Face: [r1](https://huggingface.co/avichal-08/distill-lab-r1), [l1](https://huggingface.co/avichal-08/distill-lab-l1), [l2](https://huggingface.co/avichal-08/distill-lab-l2).
