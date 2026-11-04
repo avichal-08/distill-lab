@@ -63,3 +63,25 @@ def test_every_kd_kind_backprops(kind):
     total, _ = objective(cfg(kind), logits, labels, EOS, teacher)
     total.backward()
     assert torch.isfinite(logits.grad).all() and logits.grad.abs().sum() > 0
+
+
+@pytest.mark.parametrize("kind", ["ce", "fkl", "rkl"])
+def test_dropping_ungraded_rows_keeps_the_gradient(kind):
+    # objective only softmaxes graded positions, the old full-tensor math must give the same grads
+    from distill_lab.train.objective import KD
+
+    logits, labels, teacher = batch()
+    a = logits.clone().requires_grad_()
+    objective(cfg(kind), a, labels, EOS, teacher if kind != "ce" else None)[0].backward()
+
+    b = logits.clone().requires_grad_()
+    lg, lb = shift(b, labels)
+    eos = lb == EOS
+    if kind == "ce":
+        ref = ce_loss(lg, lb, reduction="sum")
+    else:
+        kd = KD[kind](lg, teacher, lb.masked_fill(eos, IGNORE), 1.0, reduction="sum")
+        stop = ce_loss(lg, lb.masked_fill(~eos, IGNORE), reduction="sum")
+        ref = 0.9 * (kd + stop) + 0.1 * ce_loss(lg, lb, reduction="sum")
+    ref.backward()
+    assert torch.allclose(a.grad, b.grad, atol=1e-6)

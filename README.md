@@ -52,6 +52,23 @@ how much the top-32 cut loses, measured on 50 solutions with the teacher and the
 
 the teacher is far more peaked than the 0.6B model was (top-32 kept 99.6% there), so for forward KL the cut is basically free. reverse KL is the odd one out. it's weighted by the student's probabilities, and an untrained student spreads mass over tokens the teacher gives almost nothing. the cache lumps all of those into one bucket, so it can't see exactly where that mass went and comes out about 6% low. it should shrink as the student gets closer to the teacher, which I'll check during training.
 
+## SFT and response distillation
+
+full fine-tune, 1 epoch, lr 1e-5 with warmup and cosine decay, batch of 32 sequences. trained students are evaluated zero-shot, since they've learned the answer format. S1 got a 4-shot run too, to make it directly comparable to the base model.
+
+| model | trained on | prompt | GSM8K | SVAMP |
+|---|---|---|---|---|
+| base student | nothing | 4-shot | 49.4% ± 2.7 | 63.0% ± 3.0 |
+| S1 | 7,469 human solutions | 0-shot | 52.2% ± 2.7 | 57.3% ± 3.1 |
+| S1 | 7,469 human solutions | 4-shot | 48.3% ± 2.7 | 63.2% ± 3.0 |
+| R1 | 12,724 teacher solutions | 0-shot | 63.5% ± 2.6 | 62.6% ± 3.0 |
+
+training on the human solutions did basically nothing. every S1 number is within noise of the base model. the zero-shot SVAMP drop I saw first goes away with the 4-shot prompt, so that was about the prompt and not lost skill.
+
+training on the teacher's solutions is a different story: +14 points on GSM8K. it did see more sequences (two solutions for most questions, and 561 fewer questions), so the data-size runs later will check how much of that is just volume. the human solutions are terse ("3*4=12"), the teacher writes out each step, and that style seems a lot easier for a 0.6B model to pick up. SVAMP doesn't move though. whatever R1 learned is tied to GSM8K-style problems, at least so far.
+
+R1 trained for 398 steps in 27 minutes on one T4. training ce went from 0.30 to about 0.22, already low from the start because the teacher's text is predictable.
+
 ## status
 
-baselines and teacher data done. next: the training loop.
+baselines, teacher data, S1 and R1 done. next: logit distillation (L1, L2).
